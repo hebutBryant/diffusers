@@ -846,7 +846,9 @@ class BasicTransformerBlock(nn.Module):
             )
 
         if positional_embeddings == "sinusoidal":
+            dummy_input = torch.zeros(1, num_positional_embeddings, dim)
             self.pos_embed = SinusoidalPositionalEmbedding(dim, max_seq_length=num_positional_embeddings)
+            position_info = self.pos_embed(dummy_input)
         else:
             self.pos_embed = None
 
