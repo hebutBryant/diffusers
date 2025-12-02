@@ -590,6 +590,10 @@ class Attention(nn.Module):
         # The `Attention` class can call different attention processors / attention functions
         # here we simply pass along all tensors to the selected processor class
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
+        if cross_attention_kwargs:   # 只有当真的有 RAC 参数时才打印
+            print(f"[Attention] Received cross_attention_kwargs keys: {list(cross_attention_kwargs.keys())}")
+        saved_cross_attention_kwargs = cross_attention_kwargs
+
 
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
         quiet_attn_parameters = {"ip_adapter_masks", "ip_hidden_states"}
@@ -602,12 +606,14 @@ class Attention(nn.Module):
             )
         cross_attention_kwargs = {k: w for k, w in cross_attention_kwargs.items() if k in attn_parameters}
 
+
+
         return self.processor(
             self,
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=attention_mask,
-            **cross_attention_kwargs,
+            **saved_cross_attention_kwargs,
         )
 
     def batch_to_head_dim(self, tensor: torch.Tensor) -> torch.Tensor:
