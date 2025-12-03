@@ -35,6 +35,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ReuseAttnProcessor import ReuseAttnProcessor
 
 
 if is_torch_xla_available():
@@ -975,8 +976,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         return ImagePipelineOutput(images=image)
 
-
-
     def rac__call__(
             self,
             prompt: Union[str, List[str]] = None,
@@ -1002,6 +1001,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             clean_caption: bool = True,
             use_resolution_binning: bool = True,
             max_sequence_length: int = 120,
+            update_steps: Optional[List[int]] = None,
             **kwargs,
         ) -> Union[ImagePipelineOutput, Tuple]:
             """
@@ -1173,9 +1173,28 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     """
                     print(f"现在处于{i}扩散步")
 
-                    step_cache = cached_hidden_states[i]
-                    print("#######################step_cache in rac call###############################",step_cache.shape)
-                    print("#######################region_indices in rac call###############################",region_indices.shape)   
+                    # 默认启用复用
+                    should_reuse = True
+                    
+                    # 如果用户指定了 update_steps，且当前步 i 不在列表中，则禁用复用
+                    if update_steps is not None and i not in update_steps:
+                        should_reuse = False
+
+                    # 根据判断结果准备 cache
+                    if should_reuse and cached_hidden_states is not None:
+                        # 取出当前步缓存
+                        step_cache = cached_hidden_states[i]
+                        # 取出当前步对应的 indices
+                        current_region_indices = region_indices 
+                        print(f"Step {i}: 启用复用 (In update_steps)")
+                    else:
+                        # 不复用：传入 None
+                        step_cache = None
+                        current_region_indices = None
+                        print(f"Step {i}: 跳过复用 (Not in update_steps)")
+
+                    print("#######################step_cache in rac call###############################",step_cache.shape if step_cache is not None else None)
+                    print("#######################region_indices in rac call###############################",current_region_indices.shape if current_region_indices is not None else None)   
 
 
                     noise_pred = self.transformer(
@@ -1184,10 +1203,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                         encoder_attention_mask=prompt_attention_mask,
                         timestep=current_timestep,
                         added_cond_kwargs=added_cond_kwargs,
-                        cross_attention_kwargs=cross_attention_kwargs,  # ⭐ 这里把我们组好的 dict 传进去
+                        cross_attention_kwargs=cross_attention_kwargs,  
                         return_dict=False,
                         step_cache = step_cache,
-                        region_indices = region_indices,
+                        region_indices = current_region_indices,
                     )[0]
                     # ===============================================================
 
